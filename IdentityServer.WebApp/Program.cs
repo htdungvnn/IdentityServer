@@ -1,5 +1,9 @@
 using IdentityServer.WebApp.Areas.Identity.Data.IdentityServer;
 using IdentityServer.WebApp.Data.IdentityServer;
+using IdentityServer.WebApp.MailService.Models;
+using IdentityServer.WebApp.MailService.Service;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -8,14 +12,37 @@ var connectionString = builder.Configuration.GetConnectionString("WebAppContextC
                        throw new InvalidOperationException("Connection string 'WebAppContextConnection' not found.");
 
 // Add services to the container.
+
+// Register EmailSender service
+builder.Services.Configure<MailSettings>(builder.Configuration.GetSection("MailSettings"));
+builder.Services.AddSingleton<IEmailSender, EmailSender>();
+
 builder.Services.AddDbContext<WebAppContext>(options =>
     options.UseSqlServer(connectionString));
 
 builder.Services.AddDefaultIdentity<WebAppUser>(options => options.SignIn.RequireConfirmedAccount = true)
-    .AddEntityFrameworkStores<WebAppContext>();
+    .AddEntityFrameworkStores<WebAppContext>()
+    .AddDefaultTokenProviders();;
 
 // Add Razor Pages for Identity UI
 builder.Services.AddRazorPages();
+
+// Add Google authentication
+builder.Services.AddAuthentication()
+    .AddGoogle(options =>
+    {
+        options.ClientId = builder.Configuration["Authentication:Google:ClientId"];
+        options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
+    })
+    .AddFacebook(options =>
+    {
+        options.AppId = builder.Configuration["Authentication:Facebook:AppId"];
+        options.AppSecret = builder.Configuration["Authentication:Facebook:AppSecret"];
+        options.Scope.Add("email");  // Add 'email' permission explicitly
+        options.Fields.Add("email");  // Ensure you request the 'email' field
+    });
+
+
 
 var app = builder.Build();
 
@@ -36,13 +63,7 @@ app.UseAuthorization(); // Enable authorization
 
 // Map Razor Pages
 app.MapRazorPages();
-
-app.MapGet("/", context =>
-{
-    if (!context.User.Identity.IsAuthenticated)
-        context.Response.Redirect("/Identity/Account/Login"); // Redirect to the login page
-    return Task.CompletedTask;
-});
+app.MapDefaultControllerRoute();
 
 
 app.Run();
